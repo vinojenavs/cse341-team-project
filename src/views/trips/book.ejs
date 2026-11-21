@@ -1,4 +1,12 @@
 <%- include('../partials/header') %>
+<style>
+    /* Ticket options that are not available on the selected day. */
+    .ticket-card.is-unavailable {
+        opacity: 0.45;
+        filter: grayscale(1);
+        cursor: not-allowed;
+    }
+</style>
 <article class="booking-page">
     <div class="route-header">
         <div class="route-header-content">
@@ -451,6 +459,60 @@
         ticketPrice = parseInt(selectedRadio.dataset.price);
     }
     updateSummary();
+
+    // ---- Ticket availability by day (calls /api/ticket-classes?day=...) ----
+    const ticketCards = document.querySelectorAll('.ticket-card');
+
+    const setTicketAvailability = (card, isAvailable) => {
+        const radio = card.querySelector('input[name="ticketClass"]');
+        radio.disabled = !isAvailable;
+        card.classList.toggle('is-unavailable', !isAvailable);
+        card.title = isAvailable ? '' : 'Not available on the selected day';
+
+        // A disabled ticket cannot stay selected.
+        if (!isAvailable && radio.checked) {
+            radio.checked = false;
+            radio.removeAttribute('checked');
+        }
+    };
+
+    const updateTicketAvailability = async (day) => {
+        try {
+            const response = await fetch(`/api/ticket-classes?day=${encodeURIComponent(day)}`);
+            if (!response.ok) {
+                throw new Error(`Request failed with status ${response.status}`);
+            }
+
+            const availableClasses = (await response.json()).map((ticketClass) => ticketClass.class);
+
+            ticketCards.forEach((card) => {
+                const radio = card.querySelector('input[name="ticketClass"]');
+                setTicketAvailability(card, availableClasses.includes(radio.value));
+            });
+
+            // If the selected ticket is no longer available, select the first one that is.
+            if (!document.querySelector('input[name="ticketClass"]:checked')) {
+                const firstAvailable = document.querySelector('input[name="ticketClass"]:not(:disabled)');
+                if (firstAvailable) {
+                    firstAvailable.checked = true;
+                    firstAvailable.dispatchEvent(new Event('change', { bubbles: true }));
+                }
+            }
+        } catch (error) {
+            console.error('Could not load ticket availability:', error);
+        }
+    };
+
+    selectedDayLabels.forEach((label) => {
+        label.addEventListener('click', () => {
+            updateTicketAvailability(label.querySelector('input').value);
+        });
+    });
+
+    const initialDay = document.querySelector('input[name="selectedDay"]:checked');
+    if (initialDay) {
+        updateTicketAvailability(initialDay.value);
+    }
 </script>
 
 <%- include('../partials/footer') %>
